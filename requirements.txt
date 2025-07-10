@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+numpy
+opencv-python
+dlib-bin==19.24.0
+python-multipart
+pillow
