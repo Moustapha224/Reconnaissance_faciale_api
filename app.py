@@ -14,6 +14,12 @@ app = FastAPI()
 
 # Monter le dossier "static" pour servir les résultats
 app.mount("/static", StaticFiles(directory="static"), name="static")
+from fastapi.responses import FileResponse
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    return FileResponse("static/index.html")
+
 
 # Chargement des modèles Dlib
 face_detector = dlib.get_frontal_face_detector()
