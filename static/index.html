@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Facial Recognition Webcam</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f0f2f5;
+      color: #333;
+      text-align: center;
+    }
+    video, img {
+      max-width: 100%;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      margin: 10px auto;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 1.1em;
+      border-radius: 5px;
+      border: none;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    #result {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Facial Recognition via Webcam</h1>
+  <video id="video" autoplay playsinline width="480" height="360"></video>
+  <br />
+  <button id="captureBtn">Capture & Recognize</button>
+  <div id="result"></div>
+
+  <script>
+    const video = document.getElementById('video');
+    const captureBtn = document.getElementById('captureBtn');
+    const resultDiv = document.getElementById('result');
+
+    // Accès à la webcam
+    async function startWebcam() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+      } catch (err) {
+        alert("Erreur d'accès à la webcam : " + err.message);
+      }
+    }
+
+    // Convertit un canvas en Blob (image JPEG)
+    function canvasToBlob(canvas) {
+      return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+    }
+
+    // Capture l'image actuelle du flux vidéo
+    async function captureImage() {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      return await canvasToBlob(canvas);
+    }
+
+    // Envoie l'image capturée à FastAPI
+    async function sendImage(blob) {
+      const formData = new FormData();
+      formData.append('file', blob, 'capture.jpg');
+
+      const response = await fetch('/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de la reconnaissance');
+      }
+      return await response.text(); // On reçoit un HTMLResponse
+    }
+
+    // Événement du bouton Capture
+    captureBtn.addEventListener('click', async () => {
+      captureBtn.disabled = true;
+      resultDiv.innerHTML = "Traitement en cours...";
+      try {
+        const imgBlob = await captureImage();
+        const htmlResult = await sendImage(imgBlob);
+        resultDiv.innerHTML = htmlResult;
+      } catch (err) {
+        resultDiv.innerHTML = `<p style="color:red;">${err.message}</p>`;
+      } finally {
+        captureBtn.disabled = false;
+      }
+    });
+
+    startWebcam();
+  </script>
+</body>
+</html>
