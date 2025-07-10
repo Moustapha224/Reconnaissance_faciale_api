@@ -2,6 +2,6 @@ fastapi
 uvicorn
 numpy
 opencv-python
-dlib==19.24.0
+dlib
 python-multipart
 pillow
