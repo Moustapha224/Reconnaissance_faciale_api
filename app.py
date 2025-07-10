@@ -14,6 +14,12 @@ app = FastAPI()
 
 # Monter le dossier "static" pour servir les résultats
 app.mount("/static", StaticFiles(directory="static"), name="static")
+from fastapi.responses import FileResponse
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    return FileResponse("static/index.html")
+
 
 # Chargement des modèles Dlib
 face_detector = dlib.get_frontal_face_detector()
@@ -21,7 +27,7 @@ shape_predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 face_encoder = dlib.face_recognition_model_v1("dlib_face_recognition_resnet_model_v1.dat")
 
 # Fonction pour encoder les visages connus
-def load_known_faces(path="known_faces"):
+def load_known_faces(path="Known_faces"):
     encodings = []
     names = []
     for name in os.listdir(path):
@@ -103,5 +109,5 @@ async def upload(file: UploadFile = File(...)):
         <a href="/">Revenir</a>
     """)
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+##if __name__ == "__main__":
+    ##uvicorn.run(app, host="0.0.0.0", port=8000)
