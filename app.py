@@ -103,5 +103,5 @@ async def upload(file: UploadFile = File(...)):
         <a href="/">Revenir</a>
     """)
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+##if __name__ == "__main__":
+    ##uvicorn.run(app, host="0.0.0.0", port=8000)
