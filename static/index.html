@@ -1,111 +1,118 @@
-<!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Facial Recognition Webcam</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-      background: #f0f2f5;
-      color: #333;
-      text-align: center;
-    }
-    video, img {
-      max-width: 100%;
-      border-radius: 8px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-      margin: 10px auto;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 1.1em;
-      border-radius: 5px;
-      border: none;
-      background: #007bff;
-      color: white;
-      cursor: pointer;
-      margin-top: 10px;
-    }
-    button:disabled {
-      background: #aaa;
-      cursor: not-allowed;
-    }
-    #result {
-      margin-top: 20px;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reconnaissance Faciale en Direct - FaceID</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
-  <h1>Facial Recognition via Webcam</h1>
-  <video id="video" autoplay playsinline width="480" height="360"></video>
-  <br />
-  <button id="captureBtn">Capture & Recognize</button>
-  <div id="result"></div>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen font-sans">
 
-  <script>
-    const video = document.getElementById('video');
-    const captureBtn = document.getElementById('captureBtn');
-    const resultDiv = document.getElementById('result');
+  <main class="max-w-4xl mx-auto py-8 px-4">
+    <h1 class="text-2xl font-bold text-center text-primary-600 dark:text-primary-400 mb-6">🎥 Reconnaissance Faciale en Direct</h1>
 
-    // Accès à la webcam
-    async function startWebcam() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-      } catch (err) {
-        alert("Erreur d'accès à la webcam : " + err.message);
-      }
-    }
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <video id="video" autoplay muted playsinline class="rounded-lg shadow w-full"></video>
+        <div class="mt-4 flex flex-col space-y-2">
+          <input type="text" id="nameInput" placeholder="Nom pour ajout" class="border rounded p-2 dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+          <button id="addFaceBtn" class="bg-primary-600 text-white py-2 rounded hover:bg-primary-700 transition">📸 Ajouter ce visage</button>
+        </div>
+      </div>
+      <div>
+        <img id="result" src="" alt="Résultat de reconnaissance" class="rounded-lg shadow w-full" />
+      </div>
+    </div>
 
-    // Convertit un canvas en Blob (image JPEG)
-    function canvasToBlob(canvas) {
-      return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
-    }
+    <div id="loader" class="text-center mt-6 hidden">
+      <div class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-16 w-16 mx-auto"></div>
+      <p class="mt-2 text-sm">Traitement en cours...</p>
+    </div>
 
-    // Capture l'image actuelle du flux vidéo
-    async function captureImage() {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      return await canvasToBlob(canvas);
-    }
+  </main>
 
-    // Envoie l'image capturée à FastAPI
-    async function sendImage(blob) {
-      const formData = new FormData();
-      formData.append('file', blob, 'capture.jpg');
+<script>
+const video = document.getElementById('video');
+const resultImg = document.getElementById('result');
+const addFaceBtn = document.getElementById('addFaceBtn');
+const nameInput = document.getElementById('nameInput');
+const loader = document.getElementById('loader');
 
-      const response = await fetch('/upload', {
-        method: 'POST',
-        body: formData
-      });
+async function startWebcam() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+  } catch (error) {
+    alert('Erreur accès webcam : ' + error.message);
+  }
+}
 
-      if (!response.ok) {
-        throw new Error('Erreur lors de la reconnaissance');
-      }
-      return await response.text(); // On reçoit un HTMLResponse
-    }
+function canvasToBlob(canvas) {
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+}
 
-    // Événement du bouton Capture
-    captureBtn.addEventListener('click', async () => {
-      captureBtn.disabled = true;
-      resultDiv.innerHTML = "Traitement en cours...";
-      try {
-        const imgBlob = await captureImage();
-        const htmlResult = await sendImage(imgBlob);
-        resultDiv.innerHTML = htmlResult;
-      } catch (err) {
-        resultDiv.innerHTML = `<p style="color:red;">${err.message}</p>`;
-      } finally {
-        captureBtn.disabled = false;
-      }
+async function captureAndSend() {
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const blob = await canvasToBlob(canvas);
+  const formData = new FormData();
+  formData.append('file', blob, 'frame.jpg');
+
+  loader.classList.remove('hidden');
+  try {
+    const response = await fetch('/detect', {
+      method: 'POST',
+      body: formData
     });
+    const data = await response.json();
+    resultImg.src = data.image;
+  } catch (error) {
+    console.error(error);
+  } finally {
+    loader.classList.add('hidden');
+  }
+}
 
-    startWebcam();
-  </script>
+async function addFace() {
+  const name = nameInput.value.trim();
+  if (!name) {
+    alert('Veuillez entrer un nom avant de capturer.');
+    return;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const blob = await canvasToBlob(canvas);
+  const formData = new FormData();
+  formData.append('file', blob, 'face.jpg');
+  formData.append('name', name);
+
+  loader.classList.remove('hidden');
+  try {
+    const response = await fetch('/add_face', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json();
+    alert(data.status);
+  } catch (error) {
+    console.error(error);
+  } finally {
+    loader.classList.add('hidden');
+  }
+}
+
+addFaceBtn.addEventListener('click', addFace);
+setInterval(captureAndSend, 1500);
+startWebcam();
+</script>
+
 </body>
 </html>
