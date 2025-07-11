@@ -1,35 +1,28 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-import uvicorn
 import cv2
 import dlib
 import numpy as np
 import os
-from PIL import Image
-import shutil
 import uuid
+import base64
+from datetime import datetime
+import pandas as pd
 
 app = FastAPI()
-
-# Monter le dossier "static" pour servir les résultats
 app.mount("/static", StaticFiles(directory="static"), name="static")
-from fastapi.responses import FileResponse
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
     return FileResponse("static/index.html")
 
-
-# Chargement des modèles Dlib
 face_detector = dlib.get_frontal_face_detector()
 shape_predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 face_encoder = dlib.face_recognition_model_v1("dlib_face_recognition_resnet_model_v1.dat")
 
-# Fonction pour encoder les visages connus
 def load_known_faces(path="Known_faces"):
-    encodings = []
-    names = []
+    encodings, names = [], []
     for name in os.listdir(path):
         person_path = os.path.join(path, name)
         for file in os.listdir(person_path):
@@ -48,70 +41,60 @@ def load_known_faces(path="Known_faces"):
 
 known_encodings, known_names = load_known_faces()
 
-# Page HTML d'accueil
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    return """
-    <html>
-    <head>
-        <title>Reconnaissance Faciale</title>
-    </head>
-    <body>
-        <h2>Uploader une image pour reconnaissance</h2>
-        <form action="/upload" enctype="multipart/form-data" method="post">
-            <input name="file" type="file" accept="image/*">
-            <input type="submit" value="Envoyer">
-        </form>
-    </body>
-    </html>
-    """
+def log_presence(name, log_path="presence_log.csv"):
+    now = datetime.now()
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H:%M:%S")
+    if not os.path.exists(log_path):
+        df = pd.DataFrame(columns=["Nom", "Date", "Heure"])
+        df.to_csv(log_path, index=False)
+    df = pd.read_csv(log_path)
+    already_logged = ((df["Nom"] == name) & (df["Date"] == date_str)).any()
+    if not already_logged and name != "Inconnu":
+        df.loc[len(df)] = [name, date_str, time_str]
+        df.to_csv(log_path, index=False)
 
-# Route d'upload
-@app.post("/upload")
-async def upload(file: UploadFile = File(...)):
-    # Enregistrer le fichier temporairement
-    img_data = await file.read()
-    temp_filename = f"temp_{uuid.uuid4()}.jpg"
-    with open(temp_filename, "wb") as f:
-        f.write(img_data)
-
-    # Traitement de l’image
-    frame = cv2.imread(temp_filename)
+@app.post("/detect")
+async def detect(file: UploadFile = File(...)):
+    image_data = await file.read()
+    np_arr = np.frombuffer(image_data, np.uint8)
+    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    faces = face_detector(rgb)
 
+    faces = face_detector(rgb)
     for face in faces:
         shape = shape_predictor(rgb, face)
         encoding = np.array(face_encoder.compute_face_descriptor(rgb, shape))
         name = "Inconnu"
+        confidence_display = ""
         distances = [np.linalg.norm(encoding - e) for e in known_encodings]
         if distances:
             min_dist = min(distances)
+            confidence = max(0, 1.0 - min_dist)
+            confidence_display = f" ({int(confidence * 100)}%)"
             if min_dist < 0.6:
                 index = np.argmin(distances)
                 name = known_names[index]
-        # Dessin
+                log_presence(name)
+
         x1, y1, x2, y2 = face.left(), face.top(), face.right(), face.bottom()
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(frame, name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        cv2.putText(frame, f"{name}{confidence_display}", (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
-    # Sauvegarder résultat
-    result_path = f"static/results/result_{uuid.uuid4()}.jpg"
-    os.makedirs(os.path.dirname(result_path), exist_ok=True)
-    cv2.imwrite(result_path, frame)
+    _, jpeg = cv2.imencode('.jpg', frame)
+    b64_img = base64.b64encode(jpeg.tobytes()).decode("utf-8")
+    return {"image": f"data:image/jpeg;base64,{b64_img}"}
 
-    # Supprimer l’image temporaire
-    os.remove(temp_filename)
-
-    return HTMLResponse(f"""
-        <h3>Résultat :</h3>
-        <img src='/{result_path}' width="500"><br>
-        <a href="/">Revenir</a>
-    """)
-
-import os
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
+@app.post("/add_face")
+async def add_face(name: str = Form(...), file: UploadFile = File(...)):
+    image_data = await file.read()
+    np_arr = np.frombuffer(image_data, np.uint8)
+    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    save_dir = os.path.join("Known_faces", name)
+    os.makedirs(save_dir, exist_ok=True)
+    filename = f"{uuid.uuid4()}.jpg"
+    cv2.imwrite(os.path.join(save_dir, filename), frame)
+    global known_encodings, known_names
+    known_encodings, known_names = load_known_faces()
+    return {"status": f"Visage ajouté pour {name}"}
